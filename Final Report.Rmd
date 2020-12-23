@@ -1,0 +1,133 @@
+---
+title: "Turnout Rate: Would Liberal Party Still Win?"
+author: "Yuze Kang"
+date: "20/12/2020"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+bibliography: reference.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library("tidyverse")
+library("cesR")
+library("haven")
+library("labelled")
+survey_dataset <-read_csv("/cloud/project/survey_dataset.csv")
+census_dataset <-read_csv("/cloud/project/census_dataset.csv")
+survey_dataset_clean<-read_csv("/cloud/project/survey_dataset_clean.csv")
+library(lme4)
+library(brms)
+library(tidybayes)
+library(caret)
+library(ROCR)
+```
+
+## Abstract
+ In 2019 Canadian Federal Election, the Liberal Party won and became the minority government, there are people being interested in the influence of turnout, that is, if the results would be the same if everyone had voted. By building a multilevel regression model using 2019 CES online survey data and use 2016 census data for post-stratification, we explored that the turnout might actually affect the result of the election.
+
+
+## Keywords
+
+Voting Turnout; Canadian 2019 Federal election; Multilevel Regression with Post-stratification. 
+
+
+## Introduction
+
+In Canadian 2019 federal election, the Liberal Party has won and Justin Trudeau has kept his seat as the Prime Minister, however this time, the Liberal party won as the minority government because of its failure to retain over a half of the seats. Also obviously enough, the Conservative Party as its strongest rival has gained increasing number of seats in the past elections. While the Liberal Party is loosing its popularity, there is might be doubt that, if, every eligible voter in Canada could vote in 2019 federal election, would the result still be the same? Is there a possibility that the Conservative Party can beat the Liberal Party? By using results from CES 2019 Online Survey we build a multilevel regression model and used 2016 census data from Statisctics Canada for post-stratification to measure voter's intentions to support Liberal Party. The model and analysis is conducted using R @citeR, several packages are very helpful and convenient. [@citetidyverse|@citecesR|@citelabelled|@citehaven|@citelme4|@citebrms|@citetidybayes|@citecaret|@citeROCR]
+
+
+## Data
+The 2019 CES Online Survey was aimed to thoroughly understand the result of the election by asking respondents to do online surveys to collect detailed information about eligible voters that can explain their voting choice and intention. By viewing the variables we could find that, the majority of people's choice were still the Liberal Party and Conservative Party. Surprisingly as the second graph shows us that the age does not change significantly across each Party's supporters. But for education level we can see that the major two Parties do have a difference.
+
+```{r echo=FALSE, paged.print=TRUE}
+#Total Average
+a<-sum(survey_dataset_clean$cps19_votechoice)
+c<-a/nrow(survey_dataset_clean)
+# Total Vote Share in survey
+ggplot(survey_dataset, aes(x=cps19_votechoice))+geom_bar(position = "dodge")
+```
+```{r echo=FALSE, paged.print=TRUE}
+ggplot(survey_dataset, aes(x=Age, y=cps19_votechoice))+geom_count()
+```
+
+```{r echo=FALSE, paged.print=TRUE}
+ggplot(survey_dataset, aes(x=education_level, y=cps19_votechoice))+geom_count()
+
+```
+
+The 2016 census data is from Statistics Canada, the highlight table of education is chosen to be used as the census dataset for post-stratification. We assume that 2019 has similar situation as 2016 in this case.
+
+
+## Model
+
+We build a MRP model to measure people's intention to vote for Liberal Party, also according to the election rules voters are allowed to choose from several parties, so we assume they either will support Liberal Party or not. However it is clear that the probability could not be 0.5, so we first calculated an average voting rate, 0.276. (Which is seemingly low as a party which has won the election).
+
+The demographic variables(which describes from basic level) we chose are gender, age and education, for the group level is the province, especially education where we observed difference of its trends in each party.
+
+By building this model, we applied the method of multilevel regression with post-stratification, which helps
+to deal with data that observations are grouped. 
+For a multilevel linear regression model, the individual level equation should be like:
+$y_{ij}$ = $β_{0j}$ + $β_{1j}$ $x_{ij}$ + $\epsilon_{ij}$
+where $y$ represents the response variable, $β_0$ is the intercept, $x_i$ is the predictors that affects $y$ , $β_1$ is the slope,
+the extent of influence that changes in x might result in y.
+When it comes to an election across the country, factors such as the province that the voter lives in would put on
+a level effect which makes the parameters unstable, and if also the observations are grouped, the coefficients
+in equation would be like this:
+$β_{0j}$ = $\alpha$ + $a_j$ , $a_j$ ∼ N(0,${\sigma_a}^2$ ) $β_{1j}$ = $β$ + $b_j$ ,$b_j$ ∼ N(0,${\sigma_b}^2$ )
+This means the parameters varies and follows different normal distribution.
+
+
+```{r eval=FALSE, include=FALSE}
+##Building Model
+model_1 <- glmer(cps19_votechoice~(1+Age|cps19_province)+gender+education_level,
+                     data = survey_dataset_clean, 
+                     family=binomial)
+summary(model_1)
+
+prob_m1<-predict(model_1,type=c('response'))
+result_m1<-ifelse(prob_m1>=c,1,0)
+model_average<-sum(result_m1)/nrow(survey_dataset_clean)
+model_average
+## Post-stratification
+census_dataset<-rename(census_dataset, gender=Sex)
+census_dataset<-rename(census_dataset, cps19_province=`Geographic name`)
+election2019_prob<-predict(model_1,data=census_dataset,type="response")
+election2019_p_result<-ifelse(election2019_prob>c,1,0)
+census_average<-sum(election2019_p_result)/sum(census_dataset$total_count)
+sum(election2019_p_result)
+```
+
+
+
+
+## Result
+
+The model average voting rate for Liberal party is 0.495, which is higher than that of the survey dataset. However, by applying the model we build to the census dataset the number of supporters for Liberal Party is surprising low, with merely 11781.
+
+
+
+
+## Discussion
+
+The average rate from the survey dataset is 0.276, after we build model based on it the rate is 0.495, but when it comes to post-stratification the rate was abnormally low. 
+
+This might be the cause of our thinking about the model, by this I mean, as the election rules say, voters can choose among several parties, which result difficulty for us to evaluate their intention by simply building a logistic model that only provides a binary result.
+
+
+## References
+
+The Code relating to this report can be found at GitHub: https://github.com/YuzeKang21/YK_FinalProject
+
+Education Highlight Tables, 2016 Census，Statistics Canada,
+https://www12.statcan.gc.ca/census-recensement/2016/dp-pd/hlt-fst/edu-sco/index-eng.cfm
+
+
+
+
+
+
+
+
